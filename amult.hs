@@ -4,7 +4,8 @@ import Data.List
 import Text.Printf
 
 -------- ======== global variable ======== --------
-bA   = False :: Bool  -- toggle Auger analysis
+bA    = False :: Bool  -- toggle Auger analysis
+excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1
 
 -- example input lines for testing
 --ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
@@ -16,10 +17,10 @@ bA   = False :: Bool  -- toggle Auger analysis
 -- check if p is in valid range 0<p<=1
 pRngChk :: (Num a, Ord a) => a -> a
 pRngChk p
-    | p < 0    =error "negative probability"
-    | p > 1    =error "probability exceeds unity"
-    | p == 0   =error "zero probability not considered"
-    | otherwise = p
+    | p < 0               = error "negative probability"
+    | excdUt && p > 1     = error "probability exceeds unity"
+    | not excdUt && p > 1 = 1
+    | otherwise           = p
 
 
 -- locate and sum occupation of each initial condition
@@ -108,6 +109,15 @@ multSum q ps = (sum . map (`f` ps)) is
     where f  = multProd q
           is = prmInds q
 
+-- net removal probabilty calculated from sum q*p_q
+netRecPQ  = \x -> x++f x
+    where f    =  (:[]) . sum . zipWith (*) [1..]
+
+-- compare both results for pnet
+compPnet pn pqs | (f pn pqs) > (2*eps) = pqs
+                | otherwise            = error "failed"
+                where f y = abs . (-) y . last
+                      eps = 1.11e-16
 
 -------- ======== Formating Output ======== --------
 --nceOt :: (Num a) => (a,a) -> [a] -> String
@@ -127,7 +137,8 @@ main =  do
             let rawData = (map read .words) line :: [Double]
             let eb =take 2 rawData
             let ps = (prpPs . tail . tail) rawData
-            (putStrLn . niceOut eb . map (`multSum`  ps)) [1..8]
+            let pnet = sum ps
+            (putStrLn . niceOut eb . (compPnet pnet) . netRecPQ . map (`multSum`  ps)) [1..8]
             main
 
 
