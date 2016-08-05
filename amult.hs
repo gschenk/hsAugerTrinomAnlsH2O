@@ -1,4 +1,5 @@
 -- multinomial analysis that considers Auger
+-- version 2, trinomial analysis, adds capture probs to input
 -- for H2O with states 2a1, 1b2, 3a1, 1b1
 import Data.List
 import Text.Printf
@@ -24,12 +25,17 @@ pRngChk p
 
 
 -- locate and sum occupation of each initial condition
+-- followed by capture, same order
 sumOrbOccp :: (Num b) => [b] -> [b]
-sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1]
+sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1,c2a1,c1b2,c3a1,c1b1]
     where o2a1  = (f 3  1)  -- hard coded column positions
           o1b2  = (f 3  4)
           o3a1  = (f 3  7)
           o1b1  = (f 1 10)
+          c2a1  = (f 1 11)
+          c1b2  = (f 1 12)
+          c3a1  = (f 1 13)
+          c1b1  = (f 1 14)
           -- get  n elements starting at the m-th position of a list, sum
           f n m = (sum . take n .snd . splitAt (m-1))
 
@@ -137,24 +143,27 @@ main =  do
         else do
             let rawData = (map read .words) line :: [Double]
             let eb =take 2 rawData
-            let ps = (prpPs . tail . tail) rawData
+            let ps = (take 4 . prpPs . tail . tail) rawData
+            -- only take occupation, capture is lost a this step
             let pnet = ((*2) . (4-) . sum) ps
             (putStrLn . niceOut eb pnet . netRecPQ . map (`multSum`  ps)) [1..8]
             main
 
 
 {- Input files ought to be organised like this example:
-# 1     2       3                   4                   5                   6                   7                   8                   9                   10                  11                  12
-#>> param. <<   >> transition probabilities                                                                                                                                                                       <<
-# E     b       >> initial condition 2a1 orbital occupied             <<    >> 1b2 orbital                                        <<    >> 3a1 orbital                                        <<    >> 1b1 orbtl. <<
-#[keV]  [au]    2a1->2a1            2a1->1b2            2a1->3a1            1b2->2a1            1b2->1b2            1b2->3a1            3a1->2a1            3a1->1b2            3a1->3a1            1b1->1b1
- 0020    0.40   0.1269480396e+00    0.5143592415e-01    0.2023602794e+00    0.9899421803e-01    0.5018767105e-02    0.4689024479e-01    0.3519103128e+00    0.6847626998e-01    0.2598374102e-01    0.7829925189e+00
- 0020    0.60   0.1648643287e+00    0.5618833391e-01    0.1706703322e+00    0.1480957416e+00    0.2789072993e-01    0.6727443586e-01    0.3493231849e+00    0.6161736900e-01    0.6928626147e-01    0.8186759488e+00
+#1      2       3                   4                   5                   6                   7                   8                   9                   10                  11                  12                  13                 14                 15                 16
+#               >> inito 1 (2a1)                                      <<    >> inito 2 (1b2)                                      <<    >> inito 3 (3a1)                                      <<    >> i. 4 (1b1) <<    >> capture into projectile, originating from orbital:                  <<
+#ELAB   B       2a1->2a1            2a1->1b2            2a1->3a1            1b2->2a1            1b2->1b2            1b2->3a1            3a1->2a1            3a1->1b2            3a1->3a1            1b1->1b1            2a1                1b2                3b1                1b1
+ 0020    0.40   0.1269480396e+00    0.5143592415e-01    0.2023602794e+00    0.9899421803e-01    0.5018767105e-02    0.4689024479e-01    0.3519103128e+00    0.6847626998e-01    0.2598374102e-01    0.7829925189e+00    0.3450854978D+00   0.5630833588D+00   0.3127868638D+00   0.1439064381D+00
+ 0020    0.60   0.1648643287e+00    0.5618833391e-01    0.1706703322e+00    0.1480957416e+00    0.2789072993e-01    0.6727443586e-01    0.3493231849e+00    0.6161736900e-01    0.6928626147e-01    0.8186759488e+00    0.3306837587D+00   0.5359625416D+00   0.2898823084D+00   0.1354759864D+00
 
 where the first two rows contain energy and collision
 parameter, the consecutive columns probabilities 
 to occupy a specific state (0<p<=1), sorted in set of
-3, 3, 3 and 1.  Comments ought to be stripped off,
+3, 3, 3 and 1.  Followed by capture probabilities, for
+4 orbitals.
+
+Comments ought to be stripped off,
 eg with grep, before piping to stdin. 
 -}
 
