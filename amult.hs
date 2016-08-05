@@ -44,7 +44,7 @@ sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1,c2a1,c1b2,c3a1,c1b1]
 -- and capture probabilities
 -- check if probabilities are valid
 prpPs :: (Num a, Ord a) => [a] -> [a]
-prpPs =  map pRngChk . sumOrbOccp . map pRngChk 
+prpPs =  map pRngChk . sumOrbOccp . map pRngChk
 
 
 -------- ======== Auger probabilities ======== --------
@@ -68,84 +68,54 @@ pNoA _ _ _ = 0
 
 -------- ======== Multinomial Analysis (Eq. 3) ======== --------
 -- permutate indices, step one,
--- make lists with correct number of zeros, ones, and twos
-prmSeeds :: (Eq a, Num t, Num a) => a -> [[t]]
-prmSeeds  = map prmBL . prm5seeds
+
+
+-- seeds to build list of numbers to permutate,
+-- of length l, distributing q electrons
+-- where the 3-tuple shows the numbers of
+-- recursive
+-- (zeros,ones,twos) in the list
+prmsds :: (Integral b) => b ->b -> [(b,b,b)]
+prmsds 0 _ = []
+prmsds 1 0 = [(1,0,0)]
+prmsds 1 1 = [(0,1,0)]
+prmsds l 0 = [(l,0,0)]
+prmsds l 1 = [(l-1,1,0)]
+prmsds l q
+    | 2*l > q = (:) (l-q,q,0) . map f .  prmsds l $ (q-2)
+    | otherwise  = error "q must not exceed 2*l in prmsds"
+    where f (a,b,c) = (a-1,b,c+1)
+
 
 --  builds seeds for permutation
-prmBL [k,l,m] = (take k) zs ++ (take l) os ++ (take m) ts
+--  builds impossible values too, have to be filtered out
+prmBL (k,l,m) = (take k) zs ++ (take l) os ++ (take m) ts
     where zs = repeat 0 -- empty list
           os = repeat 1
           ts = repeat 2
 
 
-prm4seeds q | q==0  =  [[4,0,0]]
-            | q==1  =  [[3,1,0]]
-            | q==2  =  [[2,2,0],[3,0,1]]
-            | q==3  =  [[1,3,0],[2,1,1]]
-            | q==4  =  [[0,4,0],[1,2,1],[2,0,2]]
-            | q==5  =  [        [0,3,1],[1,1,2]]
-            | q==6  =  [                [0,2,2],[1,0,3]]
-            | q==7  =  [                        [0,1,3]]
-            | q==8  =  [                                [0,0,4]]
-            | otherwise  = error "q must not exceed 8"
-
-
-
-
--- rules to build 5 element lists as seeds for permutation
--- [a:n:ms] a, n, 3 ms
-prm5seeds q
-            | q==5  =  [[0,5,0]] ++ g q
-            | q==6  =  [        [0,4,1]] ++ g q
-            | q==7  =  [                [0,3,2]] ++ g q
-            | q==8  =  [                        [0,2,3]] ++ g q
-            | otherwise  = g q
-            where f (a:bs) = (a+1):bs
-                  g = map f . prm4seeds
-
-
--- rules to build 9 element lists as seeds for permutation
--- [a:ks:ls] ks, ls, 4 elements each
-prm9seeds q | q==6  = [[3,6,0]] ++ g q
-            | q==7  = [[2,7,0],[3,5,1]] ++ g q
-            | q==8  = [[1,8,0],[2,6,1],[3,4,2]] ++ g q
-            | otherwise = g q
-            where f (a:bs) = (a+4):bs
-                  g = map f . prm5seeds
-
--- permutate a set, wants filter function, remove duplicates
-prmPermutator fltr = concat . map (nub . filter fltr . permutations) . map prmBL
-
-prmF k l = as
-    where kss = (prmPermutator (\x->True) . prm4seeds) k
-          alss= (prmPermutator (\x->True) . prm5seeds) l
-          lss = map tail alss
-          as =  map head alss
-
-
-
-
 -- permutate indices step two
+--  for Binomial analysis only!
 -- permutate, filter impossible configurations, remove duplicates
-prmBiInds :: (Integral a) => a -> [[Int]]
-prmBiInds  = (prmPermutator f) . prm5seeds
-    where f (a:n:_) = n >= a  -- filter out permutations where a exceeds n
+--prmBiInds :: (Integral a) => a -> [[Int]]
+prmBiInds q
+    | q <= 8 = (concat . map (nub . filter f . permutations) . filter g . map prmBL . prmsds l) q
+    | otherwise = error "prmBiInds"
+    where l = 5 -- length of index list
+          f (a:n:_) = n >= a  -- filter out permutations where a exceeds n
+          g as = length as == l
 
 
-
-
-
-prmInds = prmBiInds
 
 -- lists of the form [[c,i,o],...] are needed for trinomial
 -- this forms it form intput lists of form [o...,c...]
-trinProbList ocs 
+trinProbList ocs
     |length ocs /= 8 = error "trinProdList: list lenght not 8"
     |otherwise = zipWith f os cs
     where os = take 4 ocs
           cs = drop 4 ocs
-          f o c 
+          f o c
             | o+c > 1.0 = error "trinProbList: negative ionization probability"
             |otherwise    = [c, 1.0-o-c, o]
 
@@ -155,7 +125,7 @@ trinIndList kls
     |otherwise  = zipWith f ks ls
     where ks = take 4 kls
           ls = drop 4 kls
-          f k l 
+          f k l
             | 2-k-l < 0 = error "trinIndList: negative index m"
             | otherwise = [k, l, 2-k-l]
 
@@ -166,7 +136,7 @@ trinProd k l (a:kls)
     | k == sum ks && l == sum (a:ls)  = (*) (fA a nkl m')  . trinOrbProd iss . trinProbList
     | otherwise = \xs -> 0
     where ks = take 4 kls  -- indices corresponding to captured electrons
-          ls = drop 4 kls 
+          ls = drop 4 kls
           nkl = (+) (head ks) (head ls)  -- number of 2a1 electron that are removed
           m'   = fromIntegral $ sum ((tail ks) ++ (tail ls)) -- number of electrons lost from outer orbitals
           iss = trinIndList kls
@@ -184,8 +154,8 @@ trinOrbProd klms cios   = (product . (zipWith f klms)) cios
             -- calculates c^k * i^l * o^m
 
 
-binProd q (a:n:ms) 
-    | q == sum (a:n:ms) = (*) (fA a n m) . prod 
+binProd q (a:n:ms)
+    | q == sum (a:n:ms) = (*) (fA a n m) . prod
     | otherwise = \xs -> 0
     where   nms = n:ms
             m = (fromIntegral . sum) ms
@@ -204,7 +174,7 @@ binProd q (a:n:ms)
 binSum :: (Eq c, Fractional c) => Int -> [c] -> c
 binSum q ps = (sum . map (`f` ps)) is
     where f  = binProd q
-          is = prmInds q
+          is = prmBiInds q
 
 -- net removal probabilty calculated from sum q*p_q
 netRecPQ  = \x -> x++f x
@@ -248,13 +218,13 @@ main =  do
  0020    0.60   0.1648643287e+00    0.5618833391e-01    0.1706703322e+00    0.1480957416e+00    0.2789072993e-01    0.6727443586e-01    0.3493231849e+00    0.6161736900e-01    0.6928626147e-01    0.8186759488e+00    0.3306837587D+00   0.5359625416D+00   0.2898823084D+00   0.1354759864D+00
 
 where the first two rows contain energy and collision
-parameter, the consecutive columns probabilities 
+parameter, the consecutive columns probabilities
 to occupy a specific state (0<p<=1), sorted in set of
 3, 3, 3 and 1.  Followed by capture probabilities, for
 4 orbitals.
 
 Comments ought to be stripped off,
-eg with grep, before piping to stdin. 
+eg with grep, before piping to stdin.
 -}
 
 -- vim: set ts=4 sw=4 sts=4 nowrap et ai:
