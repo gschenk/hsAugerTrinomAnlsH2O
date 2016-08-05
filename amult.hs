@@ -4,7 +4,7 @@ import Data.List
 import Text.Printf
 
 -------- ======== global variable ======== --------
-bA    = False :: Bool  -- toggle Auger analysis
+bA    = True :: Bool  -- toggle Auger analysis
 excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1
 
 -- example input lines for testing
@@ -45,7 +45,7 @@ prpPs =  map pRngChk . sumOrbOccp . map pRngChk
 -- mathcal P (a,n,m) [for bA = True]
 pA :: (Integral a, Fractional b) => a -> a -> b -> b
 pA 0 0 _ =1
-pA 0 1 m =m
+pA 0 1 m =m/6
 pA 1 1 m =1-m/6
 pA 0 2 m =1/36*m^2
 pA 1 2 m =1/18*(6*m-m^2)
@@ -114,15 +114,16 @@ netRecPQ  = \x -> x++f x
     where f    =  (:[]) . sum . zipWith (*) [1..]
 
 -- compare both results for pnet
-compPnet pn pqs | (f pn pqs) > (2*eps) = pqs
+compPnet pn pqs | (f pn pqs) < (2*eps) = pqs
                 | otherwise            = error "failed"
                 where f y = abs . (-) y . last
                       eps = 1.11e-16
 
 -------- ======== Formating Output ======== --------
 --nceOt :: (Num a) => (a,a) -> [a] -> String
-niceOut [keV,b] = (unwords .  (se:) . (sb:) . map (printf "%14.7e") )
-    where se = printf  "%6.1f" keV; sb = printf  "%6.2f" b
+niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") )
+    where se  = printf  "%6.1f" keV; sb = printf  "%6.2f" b
+          spn = printf "%14.7e" pn
 
 
 
@@ -137,8 +138,8 @@ main =  do
             let rawData = (map read .words) line :: [Double]
             let eb =take 2 rawData
             let ps = (prpPs . tail . tail) rawData
-            let pnet = sum ps
-            (putStrLn . niceOut eb . (compPnet pnet) . netRecPQ . map (`multSum`  ps)) [1..8]
+            let pnet = ((*2) . (4-) . sum) ps
+            (putStrLn . niceOut eb pnet . netRecPQ . map (`multSum`  ps)) [1..8]
             main
 
 
