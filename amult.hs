@@ -69,38 +69,32 @@ pNoA _ _ _ = 0
 -------- ======== Multinomial Analysis (Eq. 3) ======== --------
 -- permutate indices, step one,
 
-
--- seeds to build list of numbers to permutate,
--- of length l, distributing q electrons
--- where the 3-tuple shows the numbers of
--- recursive
--- (zeros,ones,twos) in the list
-prmsds :: (Integral b) => b ->b -> [(b,b,b)]
-prmsds 0 _ = []
-prmsds 1 0 = [(1,0,0)]
-prmsds 1 1 = [(0,1,0)]
-prmsds l 0 = [(l,0,0)]
-prmsds l 1 = [(l-1,1,0)]
-prmsds l q
-    | 2*l > q = (:) (l-q,q,0) . map f .  prmsds l $ (q-2)
-    | otherwise  = error "q must not exceed 2*l in prmsds"
-    where f (a,b,c) = (a-1,b,c+1)
-
-
---  builds seeds for permutation
---  builds impossible values too, have to be filtered out
-prmBL (k,l,m) = (take k) zs ++ (take l) os ++ (take m) ts
-    where zs = repeat 0 -- empty list
-          os = repeat 1
-          ts = repeat 2
+-- creates a list of `n` element lists that contain indices i=0,1,2
+--   such that all combinations that sum up to `q` are included
+--   prmr function recursivly constructs rules to build these lists
+--   bldr function builds the actual lists
+--   when q>n false lists are built, that have to be filtered out again
+prmSeeds n = filter (\xs -> n == length xs) . map bldr .  prmr n
+    where   prmr 0 _ = []
+            prmr 1 0 = [(1,0,0)]
+            prmr 1 1 = [(0,1,0)]
+            prmr l 0 = [(l,0,0)]
+            prmr l 1 = [(l-1,1,0)]
+            prmr l q
+                | 2*l > q = (:) (l-q,q,0) . map f .  prmr l $ (q-2)
+                | otherwise  = error "q must not exceed 2*l in prmsds"
+                where f (a,b,c) = (a-1,b,c+1)
+            bldr (k,l,m) = (take k) zs ++ (take l) os ++ (take m) ts
+                where zs = repeat 0 -- zeros
+                      os = repeat 1 -- ones
+                      ts = repeat 2 -- twos
 
 
--- permutate indices step two
---  for Binomial analysis only!
+-- permutate indices step two for Binomial analysis (only!)
 -- permutate, filter impossible configurations, remove duplicates
 --prmBiInds :: (Integral a) => a -> [[Int]]
 prmBiInds q
-    | q <= 8 = (concat . map (nub . filter f . permutations) . filter g . map prmBL . prmsds l) q
+    | q <= 8 = (concat . map (nub . filter f . permutations) . prmSeeds l) q
     | otherwise = error "prmBiInds"
     where l = 5 -- length of index list
           f (a:n:_) = n >= a  -- filter out permutations where a exceeds n
@@ -108,8 +102,22 @@ prmBiInds q
 
 
 
+-- creates and filters a lit of all possible permutations of indices that lead to
+-- k electrons at the projectile and l electrons in the continuum
+-- the elements of that list have a structure of (a,ks,ls)
+-- where 'a' is the number of Auger electron, ks the list of indices for capture
+-- and 'l' the list for e in the continuum; these lists have n=9 elements
+triInds k l  = (nub . filters . map strtr . concat . map permutations . prmSeeds n) (k+l)
+    where   n = 9
+            filters = filter f3 . filter f2 . filter f1
+            strtr (a:kls) = (a,take 4 kls,drop 4 kls)
+            f1 (_,ks,_) = sum ks == k  -- fits count of captured electrons
+            f2 (_,ks,ls) = foldl1 (&&) . map (<=2) $ zipWith (+) ks ls  -- remove only 2 or less electrons per orbital
+            f3 (a,ks,ls) = (head ks) + (head ls) >= a  -- Auger electrons must not exceed number of holes
+
+
+
 -- lists of the form [[c,i,o],...] are needed for trinomial
--- this forms it form intput lists of form [o...,c...]
 trinProbList ocs
     |length ocs /= 8 = error "trinProdList: list lenght not 8"
     |otherwise = zipWith f os cs
@@ -120,26 +128,20 @@ trinProbList ocs
             |otherwise    = [c, 1.0-o-c, o]
 
 
-trinIndList kls
-    |length kls /= 8 = error "trinIndList: list lenght not 8"
-    |otherwise  = zipWith f ks ls
-    where ks = take 4 kls
-          ls = drop 4 kls
-          f k l
+trinIndList ks ls = zipWith f ks ls
+    where f k l
             | 2-k-l < 0 = error "trinIndList: negative index m"
             | otherwise = [k, l, 2-k-l]
 
 -- compared to binomial, it requires twice the number of orbital
 -- structure index list (a:k2a1:k1b2:...:k1b1:l2a1:l1a1:...)
 -- indices
-trinProd k l (a:kls)
+trinProd k l (a,ks,ls)
     | k == sum ks && l == sum (a:ls)  = (*) (fA a nkl m')  . trinOrbProd iss . trinProbList
     | otherwise = \xs -> 0
-    where ks = take 4 kls  -- indices corresponding to captured electrons
-          ls = drop 4 kls
-          nkl = (+) (head ks) (head ls)  -- number of 2a1 electron that are removed
+    where nkl = (+) (head ks) (head ls)  -- number of 2a1 electrons that are removed
           m'   = fromIntegral $ sum ((tail ks) ++ (tail ls)) -- number of electrons lost from outer orbitals
-          iss = trinIndList kls
+          iss = trinIndList  ks ls
           fA | bA        = pA    -- Auger prob. function
              | otherwise = pNoA
 
