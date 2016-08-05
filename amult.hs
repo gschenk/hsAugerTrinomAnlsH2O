@@ -32,64 +32,33 @@ sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1]
           -- get  n elements starting at the m-th position of a list, sum
           f n m = (sum . take n .snd . splitAt (m-1))
 
--- prepare ps
+
+-- prepare list of target occupation ps
+-- check if probabilities are valid
 prpPs :: (Num a, Ord a) => [a] -> [a]
 prpPs =  map pRngChk . sumOrbOccp . map pRngChk 
 
 
-
 -------- ======== Auger probabilities ======== --------
--- mathcal P (k,a,m) [for bA = True]
+
+-- mathcal P (a,n,m) [for bA = True]
 pA :: (Integral a, Fractional b) => a -> a -> b -> b
 pA 0 0 _ =1
-pA 1 0 m =m
+pA 0 1 m =m
 pA 1 1 m =1-m/6
-pA 2 0 m =1/36*m^2
-pA 2 1 m =1/18*(6*m-m^2)
+pA 0 2 m =1/36*m^2
+pA 1 2 m =1/18*(6*m-m^2)
 pA 2 2 m =1/36*(6-m)^2
 pA _ _ _ =0
 
 
 -- no Auger probs, bA = False
 --pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
-pNoA _ 0 _ = 1
+pNoA 0 _ _ = 1
 pNoA _ _ _ = 0
 
 
--------- ======== preparing probabilities ======== --------
-
--- ratio of removal prob and occupation
-po :: (Fractional c) => c -> c
-po = (+) (-1) . (1/)
-
--- binomial coefficients
-binom :: Int -> Int -> Int
-binom n 0 = 1
-binom 0 k = 0
-binom n k = binom (n-1) (k-1) * n `div` k
-
-
--- probability _not_ to remove any electrons
-noRem :: Num c => [c] -> c
-noRem = sum . map (^2) 
-
-
-multProd q (a:n:ms) 
-    | q == sum (a:n:ms) = (*) (fA n a m) . prod 
-    | otherwise = \xs -> 0
-    where   nms = n:ms
-            m = (fromIntegral . sum) ms
-            fA | bA        = pA    -- Auger prob. function
-               | otherwise = pNoA
-            prod = product . (zipWith f nms)
-                where f 0 = \x -> x^^2   -- where f is π in Eq. (3)
-                      f 1 = \x -> 2*(1-x)*x
-                      f 2 = \x -> (1-x)^^2
-                      f _ = \x -> 0
-
-
-
--------- ======== Multinomial Analysis ======== --------
+-------- ======== Multinomial Analysis (Eq. 3) ======== --------
 -- permutate indices, step one,
 -- make lists with correct number of zeros, ones, and twos
 prmSeeds :: (Eq a, Num t, Num a) => a -> [[t]]
@@ -114,7 +83,21 @@ prmSeeds q  | q==0  = f [[0,0,0]]
 -- permutate, filter impossible configurations, remove duplicates
 prmInds :: (Integral a) => a -> [[Int]]
 prmInds  = concat . map (nub . filter f . permutations) . prmSeeds
-    where f xs = xs!!1 >= xs!!0  -- filter out permutations where a exceeds n
+    where f (a:n:_) = n >= a  -- filter out permutations where a exceeds n
+
+
+multProd q (a:n:ms)
+    | q == sum (a:n:ms) = (*) (fA a n m) . prod
+    | otherwise = \xs -> 0
+    where   nms = n:ms
+            m = (fromIntegral . sum) ms
+            fA | bA        = pA    -- Auger prob. function
+               | otherwise = pNoA
+            prod = product . (zipWith f nms)
+                where f 0 = \x -> x^^2   -- where f is π in Eq. (3)
+                      f 1 = \x -> 2*(1-x)*x
+                      f 2 = \x -> (1-x)^^2
+                      f _ = \x -> 0
 
 
 -- for every q use a list containing permutations of all
@@ -128,8 +111,8 @@ multSum q ps = (sum . map (`f` ps)) is
 
 -------- ======== Formating Output ======== --------
 --nceOt :: (Num a) => (a,a) -> [a] -> String
-niceOut [e,b] = (unwords .  (se:) . (sb:) . map (printf "%12.5e") )  
-    where se = printf  "%6.1f" e; sb = printf  "%6.1f" b
+niceOut [keV,b] = (unwords .  (se:) . (sb:) . map (printf "%14.7e") )
+    where se = printf  "%6.1f" keV; sb = printf  "%6.2f" b
 
 
 
@@ -149,9 +132,10 @@ main =  do
 
 
 {- Input files ought to be organised like this example:
-#1      2       3                   4                   5                   6                   7                   8                   9                   10                  11                  12
-#               >> inito 1 (2a1)                                      <<    >> inito 2 (1b2)                                      <<    >> inito 3 (3a1)                                      <<    >> i. 4 (1b1) <<
-#ELAB   B       2a1->2a1            2a1->1b2            2a1->3a1            1b2->2a1            1b2->1b2            1b2->3a1            3a1->2a1            3a1->1b2            3a1->3a1            1b1->1b1
+# 1     2       3                   4                   5                   6                   7                   8                   9                   10                  11                  12
+#>> param. <<   >> transition probabilities                                                                                                                                                                       <<
+# E     b       >> initial condition 2a1 orbital occupied             <<    >> 1b2 orbital                                        <<    >> 3a1 orbital                                        <<    >> 1b1 orbtl. <<
+#[keV]  [au]    2a1->2a1            2a1->1b2            2a1->3a1            1b2->2a1            1b2->1b2            1b2->3a1            3a1->2a1            3a1->1b2            3a1->3a1            1b1->1b1
  0020    0.40   0.1269480396e+00    0.5143592415e-01    0.2023602794e+00    0.9899421803e-01    0.5018767105e-02    0.4689024479e-01    0.3519103128e+00    0.6847626998e-01    0.2598374102e-01    0.7829925189e+00
  0020    0.60   0.1648643287e+00    0.5618833391e-01    0.1706703322e+00    0.1480957416e+00    0.2789072993e-01    0.6727443586e-01    0.3493231849e+00    0.6161736900e-01    0.6928626147e-01    0.8186759488e+00
 
