@@ -40,19 +40,21 @@ orgData ds = ((e,b),os)
 -------- ======== Auger probabilities ======== --------
 -- mathcal P (k,a,m)
 pA :: (Integral a, Fractional b) => a -> a -> b -> b
-pA 0 0 m =1
-pA 0 1 m =0
+pA 0 0 _ =1
+pA 0 _ _ =0
 pA 1 0 m =m
 pA 1 1 m =1-m/6
+pA 1 _ _ =0
 pA 2 0 m =1/36*m^2
 pA 2 1 m =1/18*(6*m-m^2)
 pA 2 2 m =1/36*(6-m)^2
+pA _ _ _ =0
 
 
 -- no Auger probs
 pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
-pNoA n 0 m = 1
-pNoA n 1 m = 0
+pNoA _ 0 _ = 1
+pNoA _ _ _ = 0
 
 
 -- ratio of removal prob and occupation
@@ -71,7 +73,7 @@ noRem = sum . map (^2)
 
 -- repetitive elements of calculation
 facPi :: (Fractional c) => Int -> c -> c
-facPi 0 = ((+1) . (*0))
+facPi 0 = ((+1) . (*0)) -- neutral element
 facPi 1 = ((*) 2 . po )
 facPi 2 = ((^^2) . po )
 facPi k= ((*) b . (^^k) . po )
@@ -125,14 +127,17 @@ prmInds :: (Integral a) => a -> [[Int]]
 prmInds  = concat . map (nub . filter f . permutations) . prmSeeds
     where f xs = head xs >= last xs  -- filter out permutations where a exceeds n
 
-multSum q ps = (sum . map (`f` ps) . prmInds) q
-    where   f  = multProd bA q
-            bA = True
+
+-- use all possible permutations of the indices [n,m...,a]
+multSum q ps = ((*pnot) . sum . map (`f` ps) . prmInds) q
+    where   f    = multProd bA q
+            pnot = ((^^2) . product)   ps
+            bA   = False
 
 
 -- example input line
-ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
-ps =  (sumOrbOccupation . drop 2) ds
+--ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
+--ps =  (sumOrbOccupation . drop 2) ds
 
 -- use `grep -Ev "^$|^#" < $1` to filter comments from input
 main =  do
@@ -142,8 +147,9 @@ main =  do
         else do
             let rawData = (map read .words) line :: [Double]
             let netOcpData = orgData rawData
-
-            (print) netOcpData
+            let ps =snd netOcpData
+            (print . fst ) netOcpData
+            (print . map (`multSum`  ps)) [1..8]
             main
 
 
