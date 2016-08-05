@@ -4,13 +4,15 @@
 import Data.List
 import Text.Printf
 import Data.Time
+--import Data.Array.Parallel  --doesn't work with base 4.8 yet
 
 -------- ======== data type definitions ======== --------
 data TriInds = TrI Int [Int] [Int] deriving (Show, Eq)
 
 -------- ======== global variable ======== --------
 bA    = True :: Bool  -- toggle Auger analysis
-excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1
+excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1, negative probs set to zero when small
+corrTld = 1e-7  -- depending on excdUt, correct when error smaller than this, else throw exception
 
 -- example input lines for testing
 --ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
@@ -20,11 +22,12 @@ excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1
 -------- ======== input related ======== --------
 
 -- check if p is in valid range 0<p<=1
-pRngChk :: (Num a, Ord a) => a -> a
+pRngChk :: Double -> Double
 pRngChk p
     | p < 0               = error "negative probability"
     | excdUt && p > 1     = error "probability exceeds unity"
-    | not excdUt && p > 1 = 1
+    | not excdUt && p > 1  = 1
+    | p-1 >= corrTld =  error "probability exceeds unity, considerably"
     | otherwise           = p
 
 
@@ -47,7 +50,7 @@ sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1,c2a1,c1b2,c3a1,c1b1]
 -- prepare list of target occupation ps
 -- and capture probabilities
 -- check if probabilities are valid
-prpPs :: (Num a, Ord a) => [a] -> [a]
+prpPs :: [Double] -> [Double]
 prpPs =  map pRngChk . sumOrbOccp . map pRngChk
 
 
@@ -156,7 +159,7 @@ myLookup  x xs = case lookup x xs of
 --     first, Auger index a
 --     second, ks, four, number of electrons at the projectile
 --     third, ls, four, number of electrons in the continuum
-trinProd :: (Ord a, Fractional a, Integral b) => [b] -> [b] -> [a] -> [a] -> a
+--trinProd :: (Ord a, Fractional a, Integral b) => [b] -> [b] -> [a] -> [a] -> a
 trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
     where is = map (1-) $ zipWith (+) os cs  -- ionisation probability
           ns = map (2-) $ zipWith (+) ks ls
@@ -168,9 +171,12 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
           f rs is  -- powers (0,1,2) of probs, checks input
             | minimum is < 0   = error "trinProd, negative index"
             | maximum is > 2   = error "trinProd, forbidden index"
-            | minimum rs < 0   = error "trinProd, negative prob."
+            | excdUt && minimum rs < 0   = error "trinProd, negative prob."
+            | (minimum rs)*(-1) >= corrTld = error "trinProd, exceedingly negative prob."
             | maximum rs > 1.0 = error "trinProd, probability > 1"
-            |otherwise = product $ zipWith (^^) rs is
+            |otherwise = product $ zipWith (^^) (map (\x -> if x < 0 then 0 else x) rs) is
+            -- negative probabilities are corrected to zero
+            -- probs smaller than -corrTld cause an exception still
 
 
 -- sum of trinomial products
@@ -194,7 +200,7 @@ trinSum ocs k l  =  sum $ map f is
           g _ = 0
 
 -- gets trinomial probabilities for all k, l combinations
-klTrinProbs :: (Fractional a, Ord a) => [a] -> [a]
+--klTrinProbs :: (Fractional a, Ord a) => [a] -> [a]
 klTrinProbs ps = concat $ map (\x-> (map (trinSum ps x) [0..8-x])) [0..8]
 
 
@@ -257,7 +263,8 @@ main =  do
             let ps = prpPs . drop 2 $ rawData
             let os = take 4 ps
             let pnet = ((*2) . (4-) . sum ) os
-            putStrLn . niceOut eb pnet $ klTrinProbs ps
+            let pkl = klTrinProbs ps
+            putStrLn $ niceOut eb pnet pkl
             main
 
 
