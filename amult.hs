@@ -51,7 +51,7 @@ pA _ _ _ =0
 
 
 -- no Auger probs, bA = False
-pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
+--pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
 pNoA _ 0 _ = 1
 pNoA _ _ _ = 0
 
@@ -60,7 +60,7 @@ pNoA _ _ _ = 0
 
 -- ratio of removal prob and occupation
 po :: (Fractional c) => c -> c
-po = (+) (-1) . ((/) 1)
+po = (+) (-1) . (1/)
 
 -- binomial coefficients
 binom :: Int -> Int -> Int
@@ -74,46 +74,26 @@ noRem :: Num c => [c] -> c
 noRem = sum . map (^2) 
 
 
--- repetitive elements of calculation
-facPi :: (Fractional c) => Int -> c -> c
-facPi 0 = ((+1) . (*0)) -- neutral element
-facPi 1 = ((*) 2 . po )
-facPi 2 = ((^^2) . po )
-facPi k= ((*) b . (^^k) . po )
-    where b = (fromIntegral . (binom n) ) k
-          n = 2
+multProd q (a:n:ms) 
+    | q == sum (a:n:ms) = (*) (fA n a m)  . prod 
+    | otherwise = \xs -> 0
+    where   nms = n:ms
+            m = (fromIntegral . sum) ms
+            fA | bA        = pA    -- Auger prob. function
+               | otherwise = pNoA
+            prod = product . (zipWith f nms)
+                where f 0 = \x -> x^^2   -- where f is π in Eq. (3)
+                      f 1 = \x -> 2*(1-x)*x
+                      f 2 = \x -> (1-x)^^2
+                      f _ = \x -> 0
 
--------- ======== Multinomial Products ======== --------
--- is indices [n,m1b2,m3a1,m1b1,a]
--- ps probability array, corresponding to indices
--- q  final target charge state
--- n  electrons lost from 2a1
--- m1b2,m3a1,m1b1
---    electrons lost from respective orbitals
--- a  number of Auger electrons
--- bA boolean turning Auger analysis on and off
---expression bA q n ms a p
-multProd :: (Eq a, Fractional a) => Bool -> Int -> [Int] -> [a] -> a
-multProd bA q is ps
-    | q == (sum is) && isA /= 0 = ((*isA) . prod) ps
-    | not bA && a /= 0          =0
-    | length is /= 1+length ps    = error "Unfortunately, array lenghts of indices and probs in function 'sumTerm' do not match."
-    | otherwise                 =0
-    where   a = last is
-            n = head is
-            m = (sum . tail) nms
-            nms = init is  -- removes a from list
-            isA = f  n a (fromIntegral m)  -- caclulate Auger probs
-            f | bA          = pA
-              | otherwise   = pNoA
-            prod = product . (zipWith facPi is) 
 
 
 -------- ======== Multinomial Analysis ======== --------
 -- permutate indices, step one,
 -- make lists with correct number of zeros, ones, and twos
 prmSeeds :: (Eq a, Num t, Num a) => a -> [[t]]
-prmSeeds q  | q==0  = [zs]
+prmSeeds q  | q==0  = f [[0,0,0]]
             | q==1  = f [[1,1,0]]
             | q==2  = f [[2,2,0],[1,0,1]]
             | q==3  = f [[3,3,0],[2,1,1]]
@@ -123,11 +103,11 @@ prmSeeds q  | q==0  = [zs]
             | q==7  = f [                [5,5,1],[4,1,3]]
             | q==8  = f [                        [5,2,3],[4,0,4]]
             | otherwise = error "q must not exceed 8"
-            where zs = [0,0,0,0,0] -- empty list
-                  os = [1,1,1,1,1]
-                  ts = [2,2,2,2,2]
+            where zs = repeat 0 -- empty list
+                  os = repeat 1
+                  ts = repeat 2
                   f = map g
-                  g [k,l,m] = (drop k) zs ++ (take l) os ++ (take m) ts
+                  g [k,l,m] = (take (5-k)) zs ++ (take l) os ++ (take m) ts
 
 
 -- permutate indices step two
@@ -141,9 +121,8 @@ prmInds  = concat . map (nub . filter f . permutations) . prmSeeds
 -- electron configurations to get the correct products
 -- and sum them up
 multSum :: (Eq c, Fractional c) => Int -> [c] -> c
-multSum q ps = ((*pnot) . sum . map (`f` ps) . prmInds) q
-    where   f    = multProd bA q
-            pnot = ((^^2) . product)   ps
+multSum q ps = (sum . map (`f` ps) . prmInds) q
+    where f = multProd q
 
 
 -------- ======== Formating Output ======== --------
