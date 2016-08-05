@@ -115,8 +115,68 @@ triInds k l  = (nub . filters . map strtr . concat . map permutations . prmSeeds
             f2 (_,ks,ls) = foldl1 (&&) . map (<=2) $ zipWith (+) ks ls  -- remove only 2 or less electrons per orbital
             f3 (a,ks,ls) = (head ks) + (head ls) >= a  -- Auger electrons must not exceed number of holes
 
+-------- ======== Indices are done ======== --------
+
+-------- ======== Trinomial ======== --------
+
+-- Input in the form
+--   probabilities, a list of 8 single particle probabilities
+--     [os]++[cs]
+--     os, four, occupation of target orbitals
+--     cs, four, capture probabilities
+--   nine integers, each in 0,1,2
+--     organised in a 3-tuple,
+--     first, Auger index a
+--     second, ks, four, number of electrons at the projectile
+--     third, ls, four, number of electrons in the continuum
+trinProd :: (Ord a, Fractional a, Integral b) => [b] -> [b] -> [a] -> [a] -> a
+trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
+    where is = zipWith (-) os cs  -- ionisation probability
+          ns = map (2-) $ zipWith (+) ks ls
+          tc = product $ zipWith g ks ls
+--        g k l = trinomial k l (2-k-l) --overkill
+          g 0 1 = 2 --trinomial coefficients
+          g 1 0 = 2  -- only a few trivial cases needed
+          g 1 1 = 2
+          g _ _ = 1
+          f rs is  -- powers (0,1,2) of probs, checks input
+            | minimum is < 0   = error "trinProd, negative index"
+            | maximum is > 2   = error "trinProd, forbidden index"
+            | minimum rs < 0.0 = error "trinProd, negative prob."
+            | maximum rs > 1.0 = error "trinProd, probability > 1"
+            |otherwise = product $ zipWith (^^) rs is
 
 
+-- trinomial coefficient
+-- (a,b,c)! = (a+b+c)! / (a! b! c!)
+trinomial 0 0 0  = 1
+trinomial 0 0 1  = 1
+trinomial 0 1 0  = 1
+trinomial 1 0 0  = 1
+trinomial 0 0 2  = 1
+trinomial 0 2 0  = 1
+trinomial 2 0 0  = 1
+trinomial 0 1 1  = 2
+trinomial 1 0 1  = 2
+trinomial 1 1 0  = 2
+trinomial a b c  =  multinomial [a,b,c]
+
+
+-- multinomial coefficient
+multinomial as
+    | sum as == maximum as = 1
+    | sum as == 2 && maximum as == 1 = 2
+    | maximum as == 1 =  f (sum as)
+    | otherwise = product . (f (sum as):) $ map fi as
+    where f 0 = 1 -- factorial
+          f 1 = 1
+          f n = n * f(n-1)
+          fi  = (/) 1 . f -- inverted
+
+
+
+
+-------- ======== Outdated, to be replaced ======== --------
 -- lists of the form [[c,i,o],...] are needed for trinomial
 trinProbList ocs
     |length ocs /= 8 = error "trinProdList: list lenght not 8"
@@ -128,15 +188,19 @@ trinProbList ocs
             |otherwise    = [c, 1.0-o-c, o]
 
 
+
 trinIndList ks ls = zipWith f ks ls
     where f k l
             | 2-k-l < 0 = error "trinIndList: negative index m"
             | otherwise = [k, l, 2-k-l]
 
+
+
+
 -- compared to binomial, it requires twice the number of orbital
 -- structure index list (a:k2a1:k1b2:...:k1b1:l2a1:l1a1:...)
 -- indices
-trinProd k l (a,ks,ls)
+trinProdOld k l (a,ks,ls)
     | k == sum ks && l == sum (a:ls)  = (*) (fA a nkl m')  . trinOrbProd iss . trinProbList
     | otherwise = \xs -> 0
     where nkl = (+) (head ks) (head ls)  -- number of 2a1 electrons that are removed
