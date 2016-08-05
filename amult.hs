@@ -75,7 +75,7 @@ noRem = sum . map (^2)
 
 
 multProd q (a:n:ms) 
-    | q == sum (a:n:ms) = (*) (fA n a m)  . prod 
+    | q == sum (a:n:ms) = (*) (fA n a m) . prod 
     | otherwise = \xs -> 0
     where   nms = n:ms
             m = (fromIntegral . sum) ms
@@ -100,7 +100,7 @@ prmSeeds q  | q==0  = f [[0,0,0]]
             | q==4  = f [[4,4,0],[3,2,1],[2,0,2]]
             | q==5  = f [[5,5,0],[4,3,1],[3,1,2]]
             | q==6  = f [        [5,4,1],[4,2,2],[3,0,3]]
-            | q==7  = f [                [5,5,1],[4,1,3]]
+            | q==7  = f [                [5,3,2],[4,1,3]]
             | q==8  = f [                        [5,2,3],[4,0,4]]
             | otherwise = error "q must not exceed 8"
             where zs = repeat 0 -- empty list
@@ -114,15 +114,16 @@ prmSeeds q  | q==0  = f [[0,0,0]]
 -- permutate, filter impossible configurations, remove duplicates
 prmInds :: (Integral a) => a -> [[Int]]
 prmInds  = concat . map (nub . filter f . permutations) . prmSeeds
-    where f xs = head xs >= last xs  -- filter out permutations where a exceeds n
+    where f xs = xs!!1 >= xs!!0  -- filter out permutations where a exceeds n
 
 
 -- for every q use a list containing permutations of all
 -- electron configurations to get the correct products
 -- and sum them up
 multSum :: (Eq c, Fractional c) => Int -> [c] -> c
-multSum q ps = (sum . map (`f` ps) . prmInds) q
-    where f = multProd q
+multSum q ps = (sum . map (`f` ps)) is
+    where f  = multProd q
+          is = prmInds q
 
 
 -------- ======== Formating Output ======== --------
