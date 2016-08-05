@@ -5,6 +5,9 @@ import Data.List
 import Text.Printf
 import Data.Time
 
+-------- ======== data type definitions ======== --------
+data TriInds = TrI Int [Int] [Int] deriving (Show, Eq)
+
 -------- ======== global variable ======== --------
 bA    = True :: Bool  -- toggle Auger analysis
 excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1
@@ -109,16 +112,37 @@ prmBiInds q
 -- the elements of that list have a structure of (a,ks,ls)
 -- where 'a' is the number of Auger electron, ks the list of indices for capture
 -- and 'l' the list for e in the continuum; these lists have n=9 elements
-triInds :: Int -> Int -> [(Int, [Int], [Int])]
-triInds k l  = (nub . filters . map strtr . concat . map permutations . prmSeeds n) (k+l)
+triInds :: Int -> Int -> [TriInds]
+triInds k l  = (map toTrI . nub . filters . map strtr . concat . map permutations . prmSeeds n) (k+l)
     where   n = 9
             filters = filter f3 . filter f2 . filter f1
             strtr (a:kls) = (a,take 4 kls,drop 4 kls)
             f1 (_,ks,_) = sum ks == k  -- fits count of captured electrons
             f2 (_,ks,ls) = foldl1 (&&) . map (<=2) $ zipWith (+) ks ls  -- remove only 2 or less electrons per orbital
             f3 (a,ks,ls) = (head ks) + (head ls) >= a  -- Auger electrons must not exceed number of holes
+            toTrI (a,ks,ls) = TrI a ks ls
 
--------- ======== Indices are done ======== --------
+
+
+-------- ======== prepare associated list of indices ======== --------
+
+
+-- returns associated list with octal key
+klTriInds :: [(Int, [TriInds])]
+klTriInds = map (\x -> (f x,  triInds (fst x) (snd x) ) )   klTuples
+    where f (a,b) = 10*a+b
+          g (a,ks,ls) = TrI a ks ls
+
+-- makes a list of (k,l) tuples
+klTuples :: [(Int, Int)]
+klTuples =  concat $ map (\x -> (map (\y -> (x,y)) [0..8-x])) [0..8]
+
+-- lookup, error when nothing is returned
+myLookup :: Eq a => a -> [(a, b)] -> b
+myLookup  x xs = case lookup x xs of
+    Just y -> y
+    Nothing -> error "Lookup failed"
+
 
 -------- ======== Trinomial ======== --------
 
@@ -160,14 +184,14 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
 --   the number of Auger electrons a, the rest
 --   are lists of four, ks and ls, capture and ionisation
 --   probabilities respectively.
-trinSum :: (Fractional a, Ord a) => [a] -> Int -> Int -> a
+--trinSum :: (Fractional a, Ord a) => [a] -> Int -> Int -> a
 trinSum ocs k l  =  sum $ map f is
-    where is = triInds k l
+    where is =  myLookup (10*k+l) klTriInds
           os = take 4 ocs
           cs = drop 4 ocs
-          f (a,ks,ls) =(g a) * trinProd ks ls os cs
+          f (TrI a ks ls) =(g a) * trinProd ks ls os cs
           g 0 = 1  -- turns off Auger
-          g _ = 0 
+          g _ = 0
 
 -- gets trinomial probabilities for all k, l combinations
 klTrinProbs :: (Fractional a, Ord a) => [a] -> [a]
@@ -210,7 +234,7 @@ compPnet pn pqs | (f pn pqs) < (2*eps) = pqs
 -------- ======== Formating Output ======== --------
 --niceOut :: (Num a, Floating b) => [a] -> b -> [b] -> String
 niceOut :: (PrintfArg a, PrintfArg b) => [a] -> b -> [b] -> String
-niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") ) 
+niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") )
     where se  = printf  "%6.1f" keV; sb = printf  "%6.2f" b
           spn = printf "%14.7e" pn
 
@@ -233,9 +257,6 @@ main =  do
             let ps = prpPs . drop 2 $ rawData
             let os = take 4 ps
             let pnet = ((*2) . (4-) . sum ) os
---            (putStrLn . niceOut eb pnet . netRecPQ . map (`binSum`  os)) [1..8]  -- binomial prob output
-            now <- getCurrentTime
-            print now
             putStrLn . niceOut eb pnet $ klTrinProbs ps
             main
 
