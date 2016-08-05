@@ -134,7 +134,6 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
     where is = zipWith (-) os cs  -- ionisation probability
           ns = map (2-) $ zipWith (+) ks ls
           tc = product $ zipWith g ks ls
---        g k l = trinomial k l (2-k-l) --overkill
           g 0 1 = 2 --trinomial coefficients
           g 1 0 = 2  -- only a few trivial cases needed
           g 1 1 = 2
@@ -147,79 +146,11 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
             |otherwise = product $ zipWith (^^) rs is
 
 
--- trinomial coefficient
--- (a,b,c)! = (a+b+c)! / (a! b! c!)
-trinomial 0 0 0  = 1
-trinomial 0 0 1  = 1
-trinomial 0 1 0  = 1
-trinomial 1 0 0  = 1
-trinomial 0 0 2  = 1
-trinomial 0 2 0  = 1
-trinomial 2 0 0  = 1
-trinomial 0 1 1  = 2
-trinomial 1 0 1  = 2
-trinomial 1 1 0  = 2
-trinomial a b c  =  multinomial [a,b,c]
-
-
--- multinomial coefficient
-multinomial as
-    | sum as == maximum as = 1
-    | sum as == 2 && maximum as == 1 = 2
-    | maximum as == 1 =  f (sum as)
-    | otherwise = product . (f (sum as):) $ map fi as
-    where f 0 = 1 -- factorial
-          f 1 = 1
-          f n = n * f(n-1)
-          fi  = (/) 1 . f -- inverted
 
 
 
 
--------- ======== Outdated, to be replaced ======== --------
--- lists of the form [[c,i,o],...] are needed for trinomial
-trinProbList ocs
-    |length ocs /= 8 = error "trinProdList: list lenght not 8"
-    |otherwise = zipWith f os cs
-    where os = take 4 ocs
-          cs = drop 4 ocs
-          f o c
-            | o+c > 1.0 = error "trinProbList: negative ionization probability"
-            |otherwise    = [c, 1.0-o-c, o]
-
-
-
-trinIndList ks ls = zipWith f ks ls
-    where f k l
-            | 2-k-l < 0 = error "trinIndList: negative index m"
-            | otherwise = [k, l, 2-k-l]
-
-
-
-
--- compared to binomial, it requires twice the number of orbital
--- structure index list (a:k2a1:k1b2:...:k1b1:l2a1:l1a1:...)
--- indices
-trinProdOld k l (a,ks,ls)
-    | k == sum ks && l == sum (a:ls)  = (*) (fA a nkl m')  . trinOrbProd iss . trinProbList
-    | otherwise = \xs -> 0
-    where nkl = (+) (head ks) (head ls)  -- number of 2a1 electrons that are removed
-          m'   = fromIntegral $ sum ((tail ks) ++ (tail ls)) -- number of electrons lost from outer orbitals
-          iss = trinIndList  ks ls
-          fA | bA        = pA    -- Auger prob. function
-             | otherwise = pNoA
-
-
---trinOrbProd :: (Fractional c, Integral b) => [[b]] -> [[c]] -> c
-trinOrbProd klms cios   = (product . (zipWith f klms)) cios
-    where f ps is
-            | length ps /= 3  = error "trinOrbProd: wrong list lenght"
-            | length is /= 3  = error "trinOrbProd: wrong list lenght"
-            | otherwise       = (product . zipWith (^^) is) ps
-            -- lists of three elements, each required
-            -- calculates c^k * i^l * o^m
-
-
+-------- ======== Binomial ======== --------
 binProd q (a:n:ms)
     | q == sum (a:n:ms) = (*) (fA a n m) . prod
     | otherwise = \xs -> 0
