@@ -3,6 +3,7 @@
 -- for H2O with states 2a1, 1b2, 3a1, 1b1
 import Data.List
 import Text.Printf
+import Data.Time
 
 -------- ======== global variable ======== --------
 bA    = True :: Bool  -- toggle Auger analysis
@@ -74,6 +75,7 @@ pNoA _ _ _ = 0
 --   prmr function recursivly constructs rules to build these lists
 --   bldr function builds the actual lists
 --   when q>n false lists are built, that have to be filtered out again
+prmSeeds :: Integral a => Int -> Int -> [[a]]
 prmSeeds n = filter (\xs -> n == length xs) . map bldr .  prmr n
     where   prmr 0 _ = []
             prmr 1 0 = [(1,0,0)]
@@ -92,7 +94,7 @@ prmSeeds n = filter (\xs -> n == length xs) . map bldr .  prmr n
 
 -- permutate indices step two for Binomial analysis (only!)
 -- permutate, filter impossible configurations, remove duplicates
---prmBiInds :: (Integral a) => a -> [[Int]]
+prmBiInds :: Integral a => Int -> [[a]]
 prmBiInds q
     | q <= 8 = (concat . map (nub . filter f . permutations) . prmSeeds l) q
     | otherwise = error "prmBiInds"
@@ -107,6 +109,7 @@ prmBiInds q
 -- the elements of that list have a structure of (a,ks,ls)
 -- where 'a' is the number of Auger electron, ks the list of indices for capture
 -- and 'l' the list for e in the continuum; these lists have n=9 elements
+triInds :: Int -> Int -> [(Int, [Int], [Int])]
 triInds k l  = (nub . filters . map strtr . concat . map permutations . prmSeeds n) (k+l)
     where   n = 9
             filters = filter f3 . filter f2 . filter f1
@@ -131,7 +134,7 @@ triInds k l  = (nub . filters . map strtr . concat . map permutations . prmSeeds
 --     third, ls, four, number of electrons in the continuum
 trinProd :: (Ord a, Fractional a, Integral b) => [b] -> [b] -> [a] -> [a] -> a
 trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
-    where is = zipWith (-) os cs  -- ionisation probability
+    where is = map (1-) $ zipWith (+) os cs  -- ionisation probability
           ns = map (2-) $ zipWith (+) ks ls
           tc = product $ zipWith g ks ls
           g 0 1 = 2 --trinomial coefficients
@@ -141,13 +144,34 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
           f rs is  -- powers (0,1,2) of probs, checks input
             | minimum is < 0   = error "trinProd, negative index"
             | maximum is > 2   = error "trinProd, forbidden index"
-            | minimum rs < 0.0 = error "trinProd, negative prob."
+            | minimum rs < 0   = error "trinProd, negative prob."
             | maximum rs > 1.0 = error "trinProd, probability > 1"
             |otherwise = product $ zipWith (^^) rs is
 
 
+-- sum of trinomial products
+--   that lead to configuration k, l
+--   takes as argument one set of probabilities
+--   in the form (os++cs), where os ar four single-particle
+--   occupation probabilities and cs capture probabilities
+--   the sum is realised by calling a function that
+--   generates a list with all possible permutations of
+--   9 indices, each in {0,1,2} where the first is
+--   the number of Auger electrons a, the rest
+--   are lists of four, ks and ls, capture and ionisation
+--   probabilities respectively.
+trinSum :: (Fractional a, Ord a) => [a] -> Int -> Int -> a
+trinSum ocs k l  =  sum $ map f is
+    where is = triInds k l
+          os = take 4 ocs
+          cs = drop 4 ocs
+          f (a,ks,ls) =(g a) * trinProd ks ls os cs
+          g 0 = 1  -- turns off Auger
+          g _ = 0 
 
-
+-- gets trinomial probabilities for all k, l combinations
+klTrinProbs :: (Fractional a, Ord a) => [a] -> [a]
+klTrinProbs ps = concat $ map (\x-> (map (trinSum ps x) [0..8-x])) [0..8]
 
 
 -------- ======== Binomial ======== --------
@@ -184,11 +208,16 @@ compPnet pn pqs | (f pn pqs) < (2*eps) = pqs
                       eps = 1.11e-16
 
 -------- ======== Formating Output ======== --------
---nceOt :: (Num a) => (a,a) -> [a] -> String
-niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") )
+--niceOut :: (Num a, Floating b) => [a] -> b -> [b] -> String
+niceOut :: (PrintfArg a, PrintfArg b) => [a] -> b -> [b] -> String
+niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") ) 
     where se  = printf  "%6.1f" keV; sb = printf  "%6.2f" b
           spn = printf "%14.7e" pn
 
+-- function usefull for data-file comments/headers,
+-- only for interactive use
+klStr =  concat $ map (\x-> (map (f x) [0..8-x])) [0..8]
+    where f a b = show (a,b)
 
 
 -------- ========        main      ======== --------
@@ -200,10 +229,14 @@ main =  do
         then return ()
         else do
             let rawData = (map read .words) line :: [Double]
-            let eb =take 2 rawData
-            let os = (take 4 . prpPs . tail . tail) rawData
+            let eb = take 2 rawData
+            let ps = prpPs . drop 2 $ rawData
+            let os = take 4 ps
             let pnet = ((*2) . (4-) . sum ) os
-            (putStrLn . niceOut eb pnet . netRecPQ . map (`binSum`  os)) [1..8]
+--            (putStrLn . niceOut eb pnet . netRecPQ . map (`binSum`  os)) [1..8]  -- binomial prob output
+            now <- getCurrentTime
+            print now
+            putStrLn . niceOut eb pnet $ klTrinProbs ps
             main
 
 
