@@ -1,13 +1,17 @@
--- multinomial analysis with Auger
+-- multinomial analysis that considers Auger
 -- for H2O with states 2a1, 1b2, 3a1, 1b1
 import Data.List
+import Text.Printf
+
+-------- ======== global variable ======== --------
+bA   = False :: Bool  -- toggle Auger analysis
+
+-- example input lines for testing
+--ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
+--ps =  (sumOrbOccp . drop 2) ds
+
 
 -------- ======== input related ======== --------
-
--- get the n elements starting at the m-th position of a list 
-takeAt :: Int -> Int -> [a] -> [a]
-takeAt n m = (take n .snd . splitAt (m-1))
-
 
 -- check if p is in valid range 0<p<=1
 pRngChk :: (Num a, Ord a) => a -> a
@@ -19,43 +23,40 @@ pRngChk p
 
 
 -- locate and sum occupation of each initial condition
-sumOrbOccupation :: (Num b) => [b] -> [b]
-sumOrbOccupation os  = map ($os) [o2a1,o1b2,o3a1,o1b1]
-    where   o2a1 = (sum . takeAt 3  1)
-            o1b2 = (sum . takeAt 3  4)
-            o3a1 = (sum . takeAt 3  7)
-            o1b1 = (sum . takeAt 1 10)
+sumOrbOccp :: (Num b) => [b] -> [b]
+sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1]
+    where o2a1  = (f 3  1)  -- hard coded column positions
+          o1b2  = (f 3  4)
+          o3a1  = (f 3  7)
+          o1b1  = (f 1 10)
+          -- get  n elements starting at the m-th position of a list, sum
+          f n m = (sum . take n .snd . splitAt (m-1))
 
-
--- organize data of one line into (e,b) and occupations
--- orgData :: [a] -> ((a, a), [a])
-orgData :: (Num b, Ord b) => [b] -> ((b, b), [b])
-orgData ds = ((e,b),os)
-    where   os  = (map pRngChk . sumOrbOccupation . map pRngChk . snd . splitAt 2) ds
-            e   = head ds
-            b   = (head . tail) ds
+-- prepare ps
+prpPs :: (Num a, Ord a) => [a] -> [a]
+prpPs =  map pRngChk . sumOrbOccp . map pRngChk 
 
 
 
 -------- ======== Auger probabilities ======== --------
--- mathcal P (k,a,m)
+-- mathcal P (k,a,m) [for bA = True]
 pA :: (Integral a, Fractional b) => a -> a -> b -> b
 pA 0 0 _ =1
-pA 0 _ _ =0
 pA 1 0 m =m
 pA 1 1 m =1-m/6
-pA 1 _ _ =0
 pA 2 0 m =1/36*m^2
 pA 2 1 m =1/18*(6*m-m^2)
 pA 2 2 m =1/36*(6-m)^2
 pA _ _ _ =0
 
 
--- no Auger probs
+-- no Auger probs, bA = False
 pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
 pNoA _ 0 _ = 1
 pNoA _ _ _ = 0
 
+
+-------- ======== preparing probabilities ======== --------
 
 -- ratio of removal prob and occupation
 po :: (Fractional c) => c -> c
@@ -67,9 +68,11 @@ binom n 0 = 1
 binom 0 k = 0
 binom n k = binom (n-1) (k-1) * n `div` k
 
--- probability not to remove any electrons
+
+-- probability _not_ to remove any electrons
 noRem :: Num c => [c] -> c
 noRem = sum . map (^2) 
+
 
 -- repetitive elements of calculation
 facPi :: (Fractional c) => Int -> c -> c
@@ -105,51 +108,63 @@ multProd bA q is ps
               | otherwise   = pNoA
             prod = product . (zipWith facPi is) 
 
--- permutate indices
+
+-------- ======== Multinomial Analysis ======== --------
+-- permutate indices, step one,
+-- make lists with correct number of zeros, ones, and twos
 prmSeeds :: (Eq a, Num t, Num a) => a -> [[t]]
 prmSeeds q  | q==0  = [zs]
-            | q==1  = map cstr [[1,1,0]]
-            | q==2  = map cstr [[2,2,0],[1,0,1]]
-            | q==3  = map cstr [[3,3,0],[2,1,1]]
-            | q==4  = map cstr [[4,4,0],[3,2,1],[2,0,2]]
-            | q==5  = map cstr [[5,5,0],[4,3,1],[3,1,2]]
-            | q==6  = map cstr [        [5,4,1],[4,2,2],[3,0,3]]
-            | q==7  = map cstr [                [5,5,1],[4,1,3]]
-            | q==8  = map cstr [                        [5,2,3],[4,0,4]]
+            | q==1  = f [[1,1,0]]
+            | q==2  = f [[2,2,0],[1,0,1]]
+            | q==3  = f [[3,3,0],[2,1,1]]
+            | q==4  = f [[4,4,0],[3,2,1],[2,0,2]]
+            | q==5  = f [[5,5,0],[4,3,1],[3,1,2]]
+            | q==6  = f [        [5,4,1],[4,2,2],[3,0,3]]
+            | q==7  = f [                [5,5,1],[4,1,3]]
+            | q==8  = f [                        [5,2,3],[4,0,4]]
             | otherwise = error "q must not exceed 8"
             where zs = [0,0,0,0,0] -- empty list
                   os = [1,1,1,1,1]
                   ts = [2,2,2,2,2]
-                  cstr [k,l,m] = (drop k) zs ++ (take l) os ++ (take m) ts
+                  f = map g
+                  g [k,l,m] = (drop k) zs ++ (take l) os ++ (take m) ts
+
 
 -- permutate indices step two
+-- permutate, filter impossible configurations, remove duplicates
 prmInds :: (Integral a) => a -> [[Int]]
 prmInds  = concat . map (nub . filter f . permutations) . prmSeeds
     where f xs = head xs >= last xs  -- filter out permutations where a exceeds n
 
 
--- use all possible permutations of the indices [n,m...,a]
+-- for every q use a list containing permutations of all
+-- electron configurations to get the correct products
+-- and sum them up
+multSum :: (Eq c, Fractional c) => Int -> [c] -> c
 multSum q ps = ((*pnot) . sum . map (`f` ps) . prmInds) q
     where   f    = multProd bA q
             pnot = ((^^2) . product)   ps
-            bA   = False
 
 
--- example input line
---ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
---ps =  (sumOrbOccupation . drop 2) ds
+-------- ======== Formating Output ======== --------
+--nceOt :: (Num a) => (a,a) -> [a] -> String
+niceOut [e,b] = (unwords .  (se:) . (sb:) . map (printf "%12.5e") )  
+    where se = printf  "%6.1f" e; sb = printf  "%6.1f" b
 
--- use `grep -Ev "^$|^#" < $1` to filter comments from input
+
+
+-------- ========        main      ======== --------
+-- pipe input data to this script
+-- use `grep -Ev "^$|^#"` to filter comments from input
 main =  do
     line <- getLine
     if null line
         then return ()
         else do
             let rawData = (map read .words) line :: [Double]
-            let netOcpData = orgData rawData
-            let ps =snd netOcpData
-            (print . fst ) netOcpData
-            (print . map (`multSum`  ps)) [1..8]
+            let eb =take 2 rawData
+            let ps = (prpPs . tail . tail) rawData
+            (putStrLn . niceOut eb . map (`multSum`  ps)) [1..8]
             main
 
 
