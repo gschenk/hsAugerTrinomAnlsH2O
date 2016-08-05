@@ -41,6 +41,7 @@ sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1,c2a1,c1b2,c3a1,c1b1]
 
 
 -- prepare list of target occupation ps
+-- and capture probabilities
 -- check if probabilities are valid
 prpPs :: (Num a, Ord a) => [a] -> [a]
 prpPs =  map pRngChk . sumOrbOccp . map pRngChk 
@@ -69,32 +70,122 @@ pNoA _ _ _ = 0
 -- permutate indices, step one,
 -- make lists with correct number of zeros, ones, and twos
 prmSeeds :: (Eq a, Num t, Num a) => a -> [[t]]
-prmSeeds q  | q==0  = f [[0,0,0]]
-            | q==1  = f [[1,1,0]]
-            | q==2  = f [[2,2,0],[1,0,1]]
-            | q==3  = f [[3,3,0],[2,1,1]]
-            | q==4  = f [[4,4,0],[3,2,1],[2,0,2]]
-            | q==5  = f [[5,5,0],[4,3,1],[3,1,2]]
-            | q==6  = f [        [5,4,1],[4,2,2],[3,0,3]]
-            | q==7  = f [                [5,3,2],[4,1,3]]
-            | q==8  = f [                        [5,2,3],[4,0,4]]
-            | otherwise = error "q must not exceed 8"
-            where zs = repeat 0 -- empty list
-                  os = repeat 1
-                  ts = repeat 2
-                  f = map g
-                  g [k,l,m] = (take (5-k)) zs ++ (take l) os ++ (take m) ts
+prmSeeds  = map prmBL . prm5seeds
+
+--  builds seeds for permutation
+prmBL [k,l,m] = (take k) zs ++ (take l) os ++ (take m) ts
+    where zs = repeat 0 -- empty list
+          os = repeat 1
+          ts = repeat 2
+
+
+prm4seeds q | q==0  =  [[4,0,0]]
+            | q==1  =  [[3,1,0]]
+            | q==2  =  [[2,2,0],[3,0,1]]
+            | q==3  =  [[1,3,0],[2,1,1]]
+            | q==4  =  [[0,4,0],[1,2,1],[2,0,2]]
+            | q==5  =  [        [0,3,1],[1,1,2]]
+            | q==6  =  [                [0,2,2],[1,0,3]]
+            | q==7  =  [                        [0,1,3]]
+            | q==8  =  [                                [0,0,4]]
+            | otherwise  = error "q must not exceed 8"
+
+
+
+
+-- rules to build 5 element lists as seeds for permutation
+-- [a:n:ms] a, n, 3 ms
+prm5seeds q
+            | q==5  =  [[0,5,0]] ++ g q
+            | q==6  =  [        [0,4,1]] ++ g q
+            | q==7  =  [                [0,3,2]] ++ g q
+            | q==8  =  [                        [0,2,3]] ++ g q
+            | otherwise  = g q
+            where f (a:bs) = (a+1):bs
+                  g = map f . prm4seeds
+
+
+-- rules to build 9 element lists as seeds for permutation
+-- [a:ks:ls] ks, ls, 4 elements each
+prm9seeds q | q==6  = [[3,6,0]] ++ g q
+            | q==7  = [[2,7,0],[3,5,1]] ++ g q
+            | q==8  = [[1,8,0],[2,6,1],[3,4,2]] ++ g q
+            | otherwise = g q
+            where f (a:bs) = (a+4):bs
+                  g = map f . prm5seeds
+
+-- permutate a set, wants filter function, remove duplicates
+prmPermutator fltr = concat . map (nub . filter fltr . permutations) . map prmBL
+
+prmF k l = as
+    where kss = (prmPermutator (\x->True) . prm4seeds) k
+          alss= (prmPermutator (\x->True) . prm5seeds) l
+          lss = map tail alss
+          as =  map head alss
+
+
 
 
 -- permutate indices step two
 -- permutate, filter impossible configurations, remove duplicates
-prmInds :: (Integral a) => a -> [[Int]]
-prmInds  = concat . map (nub . filter f . permutations) . prmSeeds
+prmBiInds :: (Integral a) => a -> [[Int]]
+prmBiInds  = (prmPermutator f) . prm5seeds
     where f (a:n:_) = n >= a  -- filter out permutations where a exceeds n
 
 
-multProd q (a:n:ms)
-    | q == sum (a:n:ms) = (*) (fA a n m) . prod
+
+
+
+prmInds = prmBiInds
+
+-- lists of the form [[c,i,o],...] are needed for trinomial
+-- this forms it form intput lists of form [o...,c...]
+trinProbList ocs 
+    |length ocs /= 8 = error "trinProdList: list lenght not 8"
+    |otherwise = zipWith f os cs
+    where os = take 4 ocs
+          cs = drop 4 ocs
+          f o c 
+            | o+c > 1.0 = error "trinProbList: negative ionization probability"
+            |otherwise    = [c, 1.0-o-c, o]
+
+
+trinIndList kls
+    |length kls /= 8 = error "trinIndList: list lenght not 8"
+    |otherwise  = zipWith f ks ls
+    where ks = take 4 kls
+          ls = drop 4 kls
+          f k l 
+            | 2-k-l < 0 = error "trinIndList: negative index m"
+            | otherwise = [k, l, 2-k-l]
+
+-- compared to binomial, it requires twice the number of orbital
+-- structure index list (a:k2a1:k1b2:...:k1b1:l2a1:l1a1:...)
+-- indices
+trinProd k l (a:kls)
+    | k == sum ks && l == sum (a:ls)  = (*) (fA a nkl m')  . trinOrbProd iss . trinProbList
+    | otherwise = \xs -> 0
+    where ks = take 4 kls  -- indices corresponding to captured electrons
+          ls = drop 4 kls 
+          nkl = (+) (head ks) (head ls)  -- number of 2a1 electron that are removed
+          m'   = fromIntegral $ sum ((tail ks) ++ (tail ls)) -- number of electrons lost from outer orbitals
+          iss = trinIndList kls
+          fA | bA        = pA    -- Auger prob. function
+             | otherwise = pNoA
+
+
+--trinOrbProd :: (Fractional c, Integral b) => [[b]] -> [[c]] -> c
+trinOrbProd klms cios   = (product . (zipWith f klms)) cios
+    where f ps is
+            | length ps /= 3  = error "trinOrbProd: wrong list lenght"
+            | length is /= 3  = error "trinOrbProd: wrong list lenght"
+            | otherwise       = (product . zipWith (^^) is) ps
+            -- lists of three elements, each required
+            -- calculates c^k * i^l * o^m
+
+
+binProd q (a:n:ms) 
+    | q == sum (a:n:ms) = (*) (fA a n m) . prod 
     | otherwise = \xs -> 0
     where   nms = n:ms
             m = (fromIntegral . sum) ms
@@ -110,9 +201,9 @@ multProd q (a:n:ms)
 -- for every q use a list containing permutations of all
 -- electron configurations to get the correct products
 -- and sum them up
-multSum :: (Eq c, Fractional c) => Int -> [c] -> c
-multSum q ps = (sum . map (`f` ps)) is
-    where f  = multProd q
+binSum :: (Eq c, Fractional c) => Int -> [c] -> c
+binSum q ps = (sum . map (`f` ps)) is
+    where f  = binProd q
           is = prmInds q
 
 -- net removal probabilty calculated from sum q*p_q
@@ -143,10 +234,9 @@ main =  do
         else do
             let rawData = (map read .words) line :: [Double]
             let eb =take 2 rawData
-            let ps = (take 4 . prpPs . tail . tail) rawData
-            -- only take occupation, capture is lost a this step
-            let pnet = ((*2) . (4-) . sum) ps
-            (putStrLn . niceOut eb pnet . netRecPQ . map (`multSum`  ps)) [1..8]
+            let os = (take 4 . prpPs . tail . tail) rawData
+            let pnet = ((*2) . (4-) . sum ) os
+            (putStrLn . niceOut eb pnet . netRecPQ . map (`binSum`  os)) [1..8]
             main
 
 
