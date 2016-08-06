@@ -72,10 +72,8 @@ fAugerProbTobi a n m = pA a n m'
 
 
 fAugerProb'a :: (Integral b, Fractional a) => b -> b -> b -> a
-fAugerProb'a a n m = pA a n m'
-    where m'        = fromIntegral m
-          pA 0 0 0  =1
-          pA 0 _ 0  =0
+fAugerProb'a a n m' = pA a n m
+    where m         = fromIntegral m'
           pA 1 1 0  =1
           pA 2 2 0  =1
           pA _ 2 0  =0
@@ -85,21 +83,34 @@ fAugerProb'a a n m = pA a n m'
 
 
 fAugerProb'b :: (Integral b, Fractional a) => b -> b -> b -> a
-fAugerProb'b a n m = pA a n m'
-    where m'        = fromIntegral m
+fAugerProb'b a n m' = pA a n m
+    where m         = fromIntegral m'
           pA 0 0 _  =1
+          pA 0 1 5  =1
           pA 0 1 6  =1
+          pA 0 2 5  =1
+          pA 0 2 6  =1
+          pA 1 1 5  =0
           pA 1 1 6  =0
           pA 1 1 _  =1
-          pA 0 1 _  =0
-          pA 1 2 5  =1
-          pA 1 2 _  =0
-          pA 2 2 6  =0
-          pA 2 2 5  =0
-          pA 2 2 _  =1
-          pA 0 2 6  =1
-          pA 0 2 _  =0
-          pA _ _ _  = error "fAugerProb'b: unexpected pattern"
+          pA 1 2 3  =1
+          pA 1 2 4  =1
+          pA 2 2 0  =1
+          pA 2 2 1  =1
+          pA 2 2 2  =1
+          pA _ _ _  =0
+
+
+fAugerProb'b' :: (Integral b, Fractional a) => b -> b -> b -> a
+fAugerProb'b' a n m'
+        | a == 0 && n == 0                      =1
+        | a == 0 && n >= 1 && m >= 5            =1
+        | a == 1 && n == 1 && m < 5             =1
+        | a == 1 && n == 2 && m < 5 && m >= 3   =1
+        | a == 2 && n == 2 && m < 5 && m >= 3   =1
+        | a > n = error "fAugerProb'b: a>n"
+        | otherwise                             =0
+        where m = fromIntegral m'
 
 -------- ======== Multinomial Analysis (Eq. 3) ======== --------
 -- permutate indices, step one,
@@ -218,9 +229,9 @@ trinSum k l ocs =  sum $ map f is
           gA a n m -- Auger correction factor
              | not bA && a == 0 = 1
              | not bA && a /= 0 = 0
-             | otherwise        = fAugerProbTobi a n m
+--             | otherwise        = fAugerProbTobi a n m
 --             | otherwise        = fAugerProb'a a n m
---             | otherwise        = fAugerProb'b a n m
+             | otherwise        = fAugerProb'b a n m
 
 
 -- gets trinomial probabilities for all k, l combinations
