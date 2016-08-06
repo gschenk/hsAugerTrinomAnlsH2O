@@ -68,7 +68,7 @@ pA _ _ _ =0
 
 
 -- no Auger probs, bA = False
---pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
+pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
 pNoA 0 _ _ = 1
 pNoA _ _ _ = 0
 
@@ -190,17 +190,22 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
 --   the number of Auger electrons a, the rest
 --   are lists of four, ks and ls, capture and ionisation
 --   probabilities respectively.
---trinSum :: (Fractional a, Ord a) => [a] -> Int -> Int -> a
+trinSum :: [Double] -> Int -> Int -> Double
 trinSum ocs k l  =  sum $ map f is
     where is =  myLookup (10*k+l) klTriInds
           os = take 4 ocs
           cs = drop 4 ocs
-          f (TrI a ks ls) =(g a) * trinProd ks ls os cs
-          g 0 = 1  -- turns off Auger
-          g _ = 0
+          f (TrI a ks ls) =(*) (gA a n m) $ trinProd ks ls os cs
+            where n = head ks + head ls
+                  m = fromIntegral . sum $ (tail ks)++(tail ls)
+          gA a n m -- Auger correction factor
+             | not bA && a == 0 = 1
+             | not bA && a /= 0 = 0
+             | otherwise        = pA a n m
+
 
 -- gets trinomial probabilities for all k, l combinations
---klTrinProbs :: (Fractional a, Ord a) => [a] -> [a]
+klTrinProbs :: [Double] -> [Double]
 klTrinProbs ps = concat $ map (\x-> (map (trinSum ps x) [0..8-x])) [0..8]
 
 
