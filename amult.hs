@@ -6,6 +6,7 @@ import Text.Printf
 import Data.Time
 --import Data.Array.Parallel  --doesn't work with base 4.8 yet
 
+
 -------- ======== data type definitions ======== --------
 data TriInds = TrI Int [Int] [Int] deriving (Show, Eq)
 
@@ -67,12 +68,6 @@ pA 2 2 m =1/36*(6-m)^2
 pA _ _ _ =0
 
 
--- no Auger probs, bA = False
-pNoA :: (Integral a, Fractional b) => a -> a -> b -> b
-pNoA 0 _ _ = 1
-pNoA _ _ _ = 0
-
-
 -------- ======== Multinomial Analysis (Eq. 3) ======== --------
 -- permutate indices, step one,
 
@@ -96,18 +91,6 @@ prmSeeds n = filter (\xs -> n == length xs) . map bldr .  prmr n
                 where zs = repeat 0 -- zeros
                       os = repeat 1 -- ones
                       ts = repeat 2 -- twos
-
-
--- permutate indices step two for Binomial analysis (only!)
--- permutate, filter impossible configurations, remove duplicates
-prmBiInds :: Integral a => Int -> [[a]]
-prmBiInds q
-    | q <= 8 = (concat . map (nub . filter f . permutations) . prmSeeds l) q
-    | otherwise = error "prmBiInds"
-    where l = 5 -- length of index list
-          f (a:n:_) = n >= a  -- filter out permutations where a exceeds n
-          g as = length as == l
-
 
 
 -- creates and filters a lit of all possible permutations of indices that lead to
@@ -209,38 +192,9 @@ klTrinProbs :: [Double] -> [Double]
 klTrinProbs ps = concat $ map (\x-> (map (trinSum ps x) [0..8-x])) [0..8]
 
 
--------- ======== Binomial ======== --------
-binProd q (a:n:ms)
-    | q == sum (a:n:ms) = (*) (fA a n m) . prod
-    | otherwise = \xs -> 0
-    where   nms = n:ms
-            m = (fromIntegral . sum) ms
-            fA | bA        = pA    -- Auger prob. function
-               | otherwise = pNoA
-            prod = product . (zipWith f nms)
-                where f 0 = \x -> x^^2   -- where f is π in Eq. (3)
-                      f 1 = \x -> 2*(1-x)*x
-                      f 2 = \x -> (1-x)^^2
-                      f _ = \x -> 0
-
-
--- for every q use a list containing permutations of all
--- electron configurations to get the correct products
--- and sum them up
-binSum :: (Eq c, Fractional c) => Int -> [c] -> c
-binSum q ps = (sum . map (`f` ps)) is
-    where f  = binProd q
-          is = prmBiInds q
-
 -- net removal probabilty calculated from sum q*p_q
 netRecPQ  = \x -> x++f x
     where f    =  (:[]) . sum . zipWith (*) [1..]
-
--- compare both results for pnet
-compPnet pn pqs | (f pn pqs) < (2*eps) = pqs
-                | otherwise            = error "failed"
-                where f y = abs . (-) y . last
-                      eps = 1.11e-16
 
 -------- ======== Formating Output ======== --------
 --niceOut :: (Num a, Floating b) => [a] -> b -> [b] -> String
@@ -248,11 +202,6 @@ niceOut :: (PrintfArg a, PrintfArg b) => [a] -> b -> [b] -> String
 niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") )
     where se  = printf  "%6.1f" keV; sb = printf  "%6.2f" b
           spn = printf "%14.7e" pn
-
--- function usefull for data-file comments/headers,
--- only for interactive use
-klStr =  concat $ map (\x-> (map (f x) [0..8-x])) [0..8]
-    where f a b = show (a,b)
 
 
 -------- ========        main      ======== --------
