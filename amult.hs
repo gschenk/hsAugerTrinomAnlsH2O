@@ -1,6 +1,18 @@
--- multinomial analysis that considers Auger
+-- this programme performs a multinomial analysis
+-- for H_2O that considers Auger processes
+--
 -- version 2, trinomial analysis, adds capture probs to input
 -- for H2O with states 2a1, 1b2, 3a1, 1b1
+--
+-- This is a Haskell source code that works correctly
+-- with The Glorious Glasgow Haskell Compilation System,
+-- version 8.0.1
+--
+-- This code is released to the public domain under a
+-- Creative Commons CC0 1.0 dedication
+-- gerald schenk 2016
+-- gschenk@yorku.ca (perm email: gschenk@gmx.net)
+--
 import Data.List
 import Text.Printf
 import Data.Time
