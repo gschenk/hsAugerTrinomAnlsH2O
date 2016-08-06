@@ -11,13 +11,10 @@ import Data.Time
 data TriInds = TrI Int [Int] [Int] deriving (Show, Eq)
 
 -------- ======== global variable ======== --------
-bA    = True :: Bool  -- toggle Auger analysis
+bA    = True :: Bool  -- toggle Auger analysis: True on, False off
 excdUt = False  :: Bool -- error when probability exceeds unity, or set to 1, negative probs set to zero when small
 corrTld = 1e-7  -- depending on excdUt, correct when error smaller than this, else throw exception
-
--- example input lines for testing
---ds = [20.0,0.4,0.1269480396,5.143592415e-2,0.2023602794,9.899421803e-2,5.018767105e-3,4.689024479e-2,0.3519103128,6.847626998e-2,2.598374102e-2,0.7829925189]
---ps =  (sumOrbOccp . drop 2) ds
+epsilon = 1e-12
 
 
 -------- ======== input related ======== --------
@@ -34,38 +31,44 @@ pRngChk p
 
 -- locate and sum occupation of each initial condition
 -- followed by capture, same order
-sumOrbOccp :: (Num b) => [b] -> [b]
-sumOrbOccp os  = map ($os) [o2a1,o1b2,o3a1,o1b1,c2a1,c1b2,c3a1,c1b1]
-    where o2a1  = (f 3  1)  -- hard coded column positions
-          o1b2  = (f 3  4)
-          o3a1  = (f 3  7)
-          o1b1  = (f 1 10)
-          c2a1  = (f 1 11)
-          c1b2  = (f 1 12)
-          c3a1  = (f 1 13)
-          c1b1  = (f 1 14)
-          -- get  n elements starting at the m-th position of a list, sum
-          f n m = (sum . take n .snd . splitAt (m-1))
+inptMask :: (Num a, Eq a) => [a] -> [a]
+inptMask os  = (`map` fs) ($os)
+  where fs    = [o2a1,o1b2,o3a1,o1b1,c2a1,c1b2,c3a1,c1b1]
+        f 1 m = (!!m)
+        f n m = sum . take n . drop m -- sum n elements, start at m-th pos
+        o2a1  = f 3  0  -- hard coded column positions m and lengths n
+        o1b2  = f 3  3
+        o3a1  = f 3  6
+        o1b1  = f 1  9
+        c2a1  = f 1 10
+        c1b2  = f 1 11
+        c3a1  = f 1 12
+        c1b1  = f 1 13
 
 
 -- prepare list of target occupation ps
 -- and capture probabilities
 -- check if probabilities are valid
 prpPs :: [Double] -> [Double]
-prpPs =  map pRngChk . sumOrbOccp . map pRngChk
+prpPs =  map pRngChk . inptMask . map pRngChk
 
 
 -------- ======== Auger probabilities ======== --------
 
 -- mathcal P (a,n,m) [for bA = True]
-pA :: (Integral a, Fractional b) => a -> a -> b -> b
-pA 0 0 _ =1
-pA 0 1 m =m/6
-pA 1 1 m =1-m/6
-pA 0 2 m =1/36*m^2
-pA 1 2 m =1/18*(6*m-m^2)
-pA 2 2 m =1/36*(6-m)^2
-pA _ _ _ =0
+-- probabilities for a Auger electrons due to n 2a_1 holes,
+-- when already m 1b_2, 3a_1, and 1b_1 electrons have been removed
+--- T. Spranger and T. Kirchner, J. Phys B 37, 4159 (2004).
+fAugerProbTobi :: (Integral b, Fractional a) => b -> b -> b -> a
+fAugerProbTobi a n m = pA a n m'
+    where m'        = fromIntegral m
+          pA 0 0 _  =1
+          pA 0 1 m  =m/6
+          pA 1 1 m  =1-m/6
+          pA 0 2 m  =1/36*m^2
+          pA 1 2 m  =1/18*(6*m-m^2)
+          pA 2 2 m  =1/36*(6-m)^2
+          pA _ _ _  =0
 
 
 -------- ======== Multinomial Analysis (Eq. 3) ======== --------
@@ -111,7 +114,8 @@ triInds k l  = (map toTrI . nub . filters . map strtr . concat . map permutation
 
 
 -------- ======== prepare associated list of indices ======== --------
-
+-- this ought to speed up computation, as the index list has to
+-- be built only once, consecutive lines get it from memory
 
 -- returns associated list with octal key
 klTriInds :: [(Int, [TriInds])]
@@ -119,7 +123,7 @@ klTriInds = map (\x -> (f x,  triInds (fst x) (snd x) ) )   klTuples
     where f (a,b) = 10*a+b
           g (a,ks,ls) = TrI a ks ls
 
--- makes a list of (k,l) tuples
+-- makes a list of all possible (k,l) tuples
 klTuples :: [(Int, Int)]
 klTuples =  concat $ map (\x -> (map (\y -> (x,y)) [0..8-x])) [0..8]
 
@@ -143,14 +147,13 @@ myLookup  x xs = case lookup x xs of
 --     second, ks, four, number of electrons at the projectile
 --     third, ls, four, number of electrons in the continuum
 --trinProd :: (Ord a, Fractional a, Integral b) => [b] -> [b] -> [a] -> [a] -> a
-trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
+trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ms)
     where is = map (1-) $ zipWith (+) os cs  -- ionisation probability
-          ns = map (2-) $ zipWith (+) ks ls
+          ms = map (2-) $ zipWith (+) ks ls
           tc = product $ zipWith g ks ls
-          g 0 1 = 2 --trinomial coefficients
-          g 1 0 = 2  -- only a few trivial cases needed
-          g 1 1 = 2
-          g _ _ = 1
+          g _ 1 = 2 --trinomial coefficients
+          g 1 _ = 2  -- when neither k,l,m equal 2
+          g _ _ = 1  -- otherwise
           f rs is  -- powers (0,1,2) of probs, checks input
             | minimum is < 0   = error "trinProd, negative index"
             | maximum is > 2   = error "trinProd, forbidden index"
@@ -173,35 +176,41 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ns)
 --   the number of Auger electrons a, the rest
 --   are lists of four, ks and ls, capture and ionisation
 --   probabilities respectively.
-trinSum :: [Double] -> Int -> Int -> Double
-trinSum ocs k l  =  sum $ map f is
+trinSum :: Int -> Int -> [Double] -> Double
+--trinSum :: [Double] -> Int -> Int -> Double
+trinSum k l ocs =  sum $ map f is
     where is =  myLookup (10*k+l) klTriInds
           os = take 4 ocs
           cs = drop 4 ocs
           f (TrI a ks ls) =(*) (gA a n m) $ trinProd ks ls os cs
             where n = head ks + head ls
-                  m = fromIntegral . sum $ (tail ks)++(tail ls)
+                  m = sum $ (tail ks)++(tail ls)
           gA a n m -- Auger correction factor
              | not bA && a == 0 = 1
              | not bA && a /= 0 = 0
-             | otherwise        = pA a n m
+             | otherwise        = fAugerProbTobi a n m
 
 
 -- gets trinomial probabilities for all k, l combinations
 klTrinProbs :: [Double] -> [Double]
-klTrinProbs ps = concat $ map (\x-> (map (trinSum ps x) [0..8-x])) [0..8]
-
+klTrinProbs ps = map (\x -> trinSum (fst x) (snd x) ps) klTuples
 
 -- net removal probabilty calculated from sum q*p_q
 netRecPQ  = \x -> x++f x
     where f    =  (:[]) . sum . zipWith (*) [1..]
 
+-- calculate net ionization from k,l probabilities
+-- and append it to the list with k,l probs
+apdNetRec_kl :: [Double] -> [Double]
+apdNetRec_kl pkls = (pkls++) . (:[]) . sum $ zipWith (*) (map q klTuples) pkls
+    where q(k,l) = fromIntegral $ k+l
+
+
 -------- ======== Formating Output ======== --------
 --niceOut :: (Num a, Floating b) => [a] -> b -> [b] -> String
-niceOut :: (PrintfArg a, PrintfArg b) => [a] -> b -> [b] -> String
-niceOut [keV,b] pn = (unwords .  (se:) . (sb:) . (++ [spn]) . map (printf "%14.7e") )
+--niceOut :: (PrintfArg a, PrintfArg b) => [a] -> [b] -> String
+niceOut [keV,b] = (unwords .  (se:) . (sb:) .  map (printf "%14.7e") )
     where se  = printf  "%6.1f" keV; sb = printf  "%6.2f" b
-          spn = printf "%14.7e" pn
 
 
 -------- ========        main      ======== --------
@@ -215,10 +224,9 @@ main =  do
             let rawData = (map read .words) line :: [Double]
             let eb = take 2 rawData
             let ps = prpPs . drop 2 $ rawData
-            let os = take 4 ps
-            let pnet = ((*2) . (4-) . sum ) os
             let pkl = klTrinProbs ps
-            putStrLn $ niceOut eb pnet pkl
+            putStrLn $ niceOut eb $ apdNetRec_kl pkl
+--            putStrLn $ niceOut eb pnet pkl
             main
 
 
