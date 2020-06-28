@@ -13,9 +13,9 @@
 -- gerald schenk 2016
 -- gschenk@yorku.ca (perm email: gschenk@gmx.net)
 --
-import Data.List
-import Text.Printf
-import Data.Time
+import           Data.List
+import           Data.Time
+import           Text.Printf
 --import Data.Array.Parallel  --doesn't work with base 4.8 yet
 
 
@@ -74,13 +74,13 @@ prpPs =  map pRngChk . inptMask . map pRngChk
 fAugerProbTobi :: (Integral b, Fractional a) => b -> b -> b -> a
 fAugerProbTobi a n m = pA a n m'
     where m'        = fromIntegral m
-          pA 0 0 _  =1
-          pA 0 1 m  =m/6
-          pA 1 1 m  =1-m/6
-          pA 0 2 m  =1/36*m^2
-          pA 1 2 m  =1/18*(6*m-m^2)
-          pA 2 2 m  =1/36*(6-m)^2
-          pA _ _ _  =0
+          pA 0 0 _ =1
+          pA 0 1 m =m/6
+          pA 1 1 m =1-m/6
+          pA 0 2 m =1/36*m^2
+          pA 1 2 m =1/18*(6*m-m^2)
+          pA 2 2 m =1/36*(6-m)^2
+          pA _ _ _ =0
 
 
 -------- ======== Multinomial Analysis (Eq. 3) ======== --------
@@ -102,7 +102,7 @@ prmSeeds n = filter (\xs -> n == length xs) . map bldr .  prmr n
                 | 2*l > q = (:) (l-q,q,0) . map f .  prmr l $ (q-2)
                 | otherwise  = error "q must not exceed 2*l in prmsds"
                 where f (a,b,c) = (a-1,b,c+1)
-            bldr (k,l,m) = (take k) zs ++ (take l) os ++ (take m) ts
+            bldr (k,l,m) = take k zs ++ take l os ++ take m ts
                 where zs = repeat 0 -- zeros
                       os = repeat 1 -- ones
                       ts = repeat 2 -- twos
@@ -114,13 +114,13 @@ prmSeeds n = filter (\xs -> n == length xs) . map bldr .  prmr n
 -- where 'a' is the number of Auger electron, ks the list of indices for capture
 -- and 'l' the list for e in the continuum; these lists have n=9 elements
 triInds :: Int -> Int -> [TriInds]
-triInds k l  = (map toTrI . nub . filters . map strtr . concat . map permutations . prmSeeds n) (k+l)
+triInds k l  = (map toTrI . nub . filters . map strtr . concatMap permutations . prmSeeds n) (k+l)
     where   n = 9
             filters = filter f3 . filter f2 . filter f1
             strtr (a:kls) = (a,take 4 kls,drop 4 kls)
             f1 (_,ks,_) = sum ks == k  -- fits count of captured electrons
-            f2 (_,ks,ls) = foldl1 (&&) . map (<=2) $ zipWith (+) ks ls  -- remove only 2 or less electrons per orbital
-            f3 (a,ks,ls) = (head ks) + (head ls) >= a  -- Auger electrons must not exceed number of holes
+            f2 (_,ks,ls) = all (<=2) $ zipWith (+) ks ls  -- remove only 2 or less electrons per orbital
+            f3 (a,ks,ls) = head ks + head ls >= a  -- Auger electrons must not exceed number of holes
             toTrI (a,ks,ls) = TrI a ks ls
 
 
@@ -131,18 +131,18 @@ triInds k l  = (map toTrI . nub . filters . map strtr . concat . map permutation
 
 -- returns associated list with octal key
 klTriInds :: [(Int, [TriInds])]
-klTriInds = map (\x -> (f x,  triInds (fst x) (snd x) ) )   klTuples
+klTriInds = map (\x -> (f x, uncurry triInds x ) )   klTuples
     where f (a,b) = 10*a+b
           g (a,ks,ls) = TrI a ks ls
 
 -- makes a list of all possible (k,l) tuples
 klTuples :: [(Int, Int)]
-klTuples =  concat $ map (\x -> (map (\y -> (x,y)) [0..8-x])) [0..8]
+klTuples =  concatMap (\x -> map (\y -> (x,y)) [0..8-x]) [0..8]
 
 -- lookup, error when nothing is returned
 myLookup :: Eq a => a -> [(a, b)] -> b
 myLookup  x xs = case lookup x xs of
-    Just y -> y
+    Just y  -> y
     Nothing -> error "Lookup failed"
 
 
@@ -159,7 +159,7 @@ myLookup  x xs = case lookup x xs of
 --     second, ks, four, number of electrons at the projectile
 --     third, ls, four, number of electrons in the continuum
 --trinProd :: (Ord a, Fractional a, Integral b) => [b] -> [b] -> [a] -> [a] -> a
-trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ms)
+trinProd ks ls os cs = tc * f cs ks * f is ls * f os ms
     where is = map (1-) $ zipWith (+) os cs  -- ionisation probability
           ms = map (2-) $ zipWith (+) ks ls
           tc = product $ zipWith g ks ls
@@ -170,7 +170,7 @@ trinProd ks ls os cs = tc * (f cs ks) * (f is ls) * (f os ms)
             | minimum is < 0   = error "trinProd, negative index"
             | maximum is > 2   = error "trinProd, forbidden index"
             | excdUt && minimum rs < 0   = error "trinProd, negative prob."
-            | (minimum rs)*(-1) >= corrTld = error "trinProd, exceedingly negative prob."
+            | minimum rs *(-1) >= corrTld = error "trinProd, exceedingly negative prob."
             | maximum rs > 1.0 = error "trinProd, probability > 1"
             |otherwise = product $ zipWith (^^) (map (\x -> if x < 0 then 0 else x) rs) is
             -- negative probabilities are corrected to zero
@@ -196,7 +196,7 @@ trinSum k l ocs =  sum $ map f is
           cs = drop 4 ocs
           f (TrI a ks ls) =(*) (gA a n m) $ trinProd ks ls os cs
             where n = head ks + head ls
-                  m = sum $ (tail ks)++(tail ls)
+                  m = sum $ tail ks ++ tail ls
           gA a n m -- Auger correction factor
              | not bA && a == 0 = 1
              | not bA && a /= 0 = 0
@@ -205,7 +205,7 @@ trinSum k l ocs =  sum $ map f is
 
 -- gets trinomial probabilities for all k, l combinations
 klTrinProbs :: [Double] -> [Double]
-klTrinProbs ps = map (\x -> trinSum (fst x) (snd x) ps) klTuples
+klTrinProbs ps = map (\x -> uncurry trinSum x ps) klTuples
 
 -- net removal probabilty calculated from sum q*p_q
 netRecPQ  = \x -> x++f x
@@ -213,15 +213,15 @@ netRecPQ  = \x -> x++f x
 
 -- calculate net ionization from k,l probabilities
 -- and append it to the list with k,l probs
-apdNetRec_kl :: [Double] -> [Double]
-apdNetRec_kl pkls = (pkls++) . (:[]) . sum $ zipWith (*) (map q klTuples) pkls
+apdNetRecKL :: [Double] -> [Double]
+apdNetRecKL pkls = (pkls++) . (:[]) . sum $ zipWith (*) (map q klTuples) pkls
     where q(k,l) = fromIntegral $ k+l
 
 
 -------- ======== Formating Output ======== --------
 --niceOut :: (Num a, Floating b) => [a] -> b -> [b] -> String
 --niceOut :: (PrintfArg a, PrintfArg b) => [a] -> [b] -> String
-niceOut [keV,b] = (unwords .  (se:) . (sb:) .  map (printf "%14.7e") )
+niceOut [keV,b] = unwords .  (se:) . (sb:) .  map (printf "%14.7e") 
     where se  = printf  "%6.1f" keV; sb = printf  "%6.2f" b
 
 
@@ -237,17 +237,17 @@ main =  do
             let eb = take 2 rawData
             let ps = prpPs . drop 2 $ rawData
             let pkl = klTrinProbs ps
-            putStrLn $ niceOut eb $ apdNetRec_kl pkl
+            putStrLn $ niceOut eb $ apdNetRecKL pkl
 --            putStrLn $ niceOut eb pnet pkl
             main
 
 
-{- Input files ought to be organised like this example:
-#1      2       3                   4                   5                   6                   7                   8                   9                   10                  11                  12                  13                 14                 15                 16
-#               >> inito 1 (2a1)                                      <<    >> inito 2 (1b2)                                      <<    >> inito 3 (3a1)                                      <<    >> i. 4 (1b1) <<    >> capture into projectile, originating from orbital:                  <<
-#ELAB   B       2a1->2a1            2a1->1b2            2a1->3a1            1b2->2a1            1b2->1b2            1b2->3a1            3a1->2a1            3a1->1b2            3a1->3a1            1b1->1b1            2a1                1b2                3b1                1b1
- 0020    0.40   0.1269480396e+00    0.5143592415e-01    0.2023602794e+00    0.9899421803e-01    0.5018767105e-02    0.4689024479e-01    0.3519103128e+00    0.6847626998e-01    0.2598374102e-01    0.7829925189e+00    0.3450854978D+00   0.5630833588D+00   0.3127868638D+00   0.1439064381D+00
- 0020    0.60   0.1648643287e+00    0.5618833391e-01    0.1706703322e+00    0.1480957416e+00    0.2789072993e-01    0.6727443586e-01    0.3493231849e+00    0.6161736900e-01    0.6928626147e-01    0.8186759488e+00    0.3306837587D+00   0.5359625416D+00   0.2898823084D+00   0.1354759864D+00
+{- Input files ought to be organised like this example (strip the comments though):
+--1      2       3                   4                   5                   6                   7                   8                   9                   10                  11                  12                  13                 14                 15                 16
+--ELAB   B        | inito 1 (2a1)                                        |    |  inito 2 (1b2)                                       |    |  inito 3 (3a1)                                       |    |  i. 4 (1b1)  |    |  capture into projectile, originating from orbital:                   |
+--[keV]  [au]       2a1->2a1            2a1->1b2            2a1->3a1            1b2->2a1            1b2->1b2            1b2->3a1            3a1->2a1            3a1->1b2            3a1->3a1            1b1->1b1            2a1                1b2                3b1                1b1
+0020    0.40   0.1269480396e+00    0.5143592415e-01    0.2023602794e+00    0.9899421803e-01    0.5018767105e-02    0.4689024479e-01    0.3519103128e+00    0.6847626998e-01    0.2598374102e-01    0.7829925189e+00    0.3450854978e+00   0.5630833588e+00   0.3127868638e+00   0.1439064381e+00
+0020    0.60   0.1648643287e+00    0.5618833391e-01    0.1706703322e+00    0.1480957416e+00    0.2789072993e-01    0.6727443586e-01    0.3493231849e+00    0.6161736900e-01    0.6928626147e-01    0.8186759488e+00    0.3306837587e+00   0.5359625416e+00   0.2898823084e+00   0.1354759864e+00
 
 where the first two rows contain energy and collision
 parameter, the consecutive columns probabilities
